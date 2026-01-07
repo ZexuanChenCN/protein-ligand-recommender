@@ -1,0 +1,26 @@
+# 1. 补充数据相关（匹配你的data目录结构）
+data/downloaded/       # 若有下载的原始数据
+data/tmp/              # 临时数据文件
+
+# 2. 模型相关（细化checkpoints规则）
+model/checkpoints/*.ckpt  # 只忽略checkpoints下的模型文件（保留checkpoints目录）
+model/ligand/__pycache__/ # ligand模块的缓存
+model/saprot/__pycache__/ # saprot模块的缓存
+
+# 3. 推理相关（faiss索引文件）
+inference/faiss_indexes/  # 你的inference下有faiss_indexes目录，需忽略索引文件
+
+## 4. 训练日志（匹配你的training_logs）
+#model/training_logs/      # 你的项目中有training_logs目录
+#model/lightning_logs/     # 你的项目中有lightning_logs目录
+
+# 5. web相关（若web目录是前端/服务代码，忽略依赖）
+web/node_modules/
+web/dist/
+web/.env
+
+# 6. 其他补充
+*.ipynb_checkpoints/  # Jupyter笔记本缓存
+*.swp                 # Vim临时文件
+.idea/                # PyCharm项目配置（若使用）
+.vscode/              # VSCode配置（若使用）
