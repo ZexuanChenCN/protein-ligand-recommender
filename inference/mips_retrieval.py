@@ -316,7 +316,6 @@ class ProteinLigandRetriever:
 # ==================== 主测试程序（移除亲和力版） ====================
 if __name__ == "__main__":
     # 1. 配置参数
-    CHECKPOINT_PATH = "C:/czx/Project/Grade0/recommender_system_project/protein-ligand-recommender/model/checkpoints/clip_tower_best-v9.ckpt"
     CHECKPOINT_PATH = "../model/checkpoints/clip_tower_best-v9.ckpt"
     DEVICE = "cuda:0"
     TEMPERATURE_SCALE = 0.5
