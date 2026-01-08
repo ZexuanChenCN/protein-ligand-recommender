@@ -1,0 +1,7 @@
+protein_embed_dim: 256
+proj_dim: 256
+init_temperature: 0.05
+lr: 0.0001
+weight_decay: 1.0e-05
+hard_neg_weight: 1.2
+margin: 0.1

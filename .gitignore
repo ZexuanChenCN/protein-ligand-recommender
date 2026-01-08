@@ -24,3 +24,54 @@ web/.env
 *.swp                 # Vim临时文件
 .idea/                # PyCharm项目配置（若使用）
 .vscode/              # VSCode配置（若使用）
+
+# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.local/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-wheel-metadata/
+
+# 虚拟环境
+venv/
+.venv/
+
+# 日志文件
+*.log
+app.log
+dataset_cache/  # 数据集缓存
+
+# 模型文件（重点！模型文件大，不要上传到GitHub）
+model/checkpoints/  # 你的模型权重目录
+*.ckpt
+*.pth
+*.bin
+
+# 系统文件
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+~$*

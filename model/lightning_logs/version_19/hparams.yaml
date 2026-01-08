@@ -1,0 +1,14 @@
+saprot_config_path: C:\czx\Project\Grade0\recommender_system_project\protein-ligand-recommender\models\SaProt_1.3B_AFDB_OMG_NCBI
+saprot_output_dim: 2560
+chemberta_model_name: DeepChem/ChemBERTa-77M-MLM
+chemberta_hidden_dim: 384
+ligand_output_dim: 2560
+temperature: 0.07
+hard_neg_margin: 0.5
+num_neg_samples: 2
+pos_threshold: 6.0
+lr: 1.0e-05
+weight_decay: 0.01
+step_size: 8
+gamma: 0.8
+dropout_prob: 0.2

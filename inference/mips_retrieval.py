@@ -1,10 +1,9 @@
 """
-Protein-Ligand检索系统 - 最终完整版
-核心修复：
-1. 彻底解决亲和力匹配失败问题（精确+模糊匹配）
-2. 优化温度系数，提升相似度区分度
-3. 新增测试样本亲和力验证逻辑
-4. 完善的日志和错误处理
+Protein-Ligand检索系统 - 移除亲和力字段版
+核心调整：
+1. 完全移除所有亲和力相关逻辑（数据库、匹配、展示）
+2. 保留核心的蛋白/小分子检索+相似度计算
+3. 优化日志输出，聚焦检索结果本身
 """
 import torch
 import numpy as np
@@ -127,7 +126,7 @@ class CLIPStyleDualTower(nn.Module):
         model.load_state_dict(checkpoint["state_dict"], strict=False)
         return model
 
-# ==================== 检索器核心类（最终修复版） ====================
+# ==================== 检索器核心类（移除亲和力版） ====================
 class ProteinLigandRetriever:
     def __init__(self, checkpoint_path, device="cuda:0", temperature_scale=0.5):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
@@ -150,12 +149,11 @@ class ProteinLigandRetriever:
         self.model.temperature.data = torch.tensor(temperature_scale).to(self.device)
         print(f"✅ 手动调整模型温度系数为：{self.model.temperature.item():.8f}")
 
-        # 初始化索引和数据库
+        # 初始化索引
         self.protein_index = None
         self.ligand_index = None
         self.protein_id2seq = {}
         self.ligand_id2smiles = {}
-        self.affinity_db = {}
         self.raw_dataset_samples = []
 
     def preprocess_protein(self, seq):
@@ -191,15 +189,14 @@ class ProteinLigandRetriever:
         return ligand_emb.cpu().numpy()
 
     def build_indexes_from_dataset(self, dataset, max_proteins=2000, max_ligands=8000):
-        """构建索引和亲和力数据库"""
+        """构建索引（移除亲和力数据库）"""
         print("加载数据集：BALM/BALM-benchmark - BindingDB_filtered")
         dataset = dataset["train"]
 
         # 过滤无效样本
         def filter_invalid(sample):
             return (sample["Target"] and len(sample["Target"]) > 10 and
-                    sample["Drug"] and len(sample["Drug"]) > 1 and
-                    sample["Y"] is not None and sample["Y"] >= 0)
+                    sample["Drug"] and len(sample["Drug"]) > 1)
 
         dataset = dataset.filter(filter_invalid)
         self.raw_dataset_samples = [s for s in dataset]
@@ -264,75 +261,8 @@ class ProteinLigandRetriever:
         self.ligand_index.add(ligand_embs)
         print(f"ligand FAISS索引构建完成：{len(unique_ligands)}个样本，维度256")
 
-        # 构建亲和力数据库
-        self.affinity_db = {}
-        raw_affinity_db = {}
-
-        for sample in tqdm(dataset, desc="构建原始亲和力数据库"):
-            raw_p = sample["Target"].upper()
-            raw_l = sample["Drug"].replace(' ', '').lower()
-            y_val = sample["Y"]
-            raw_affinity_db[(raw_p, raw_l)] = y_val
-
-        # 存储多格式组合
-        for (raw_p, raw_l), y_val in raw_affinity_db.items():
-            proc_p = self.preprocess_protein(raw_p)
-            proc_l = self.preprocess_ligand(raw_l)
-            self.affinity_db[(raw_p, raw_l)] = y_val
-            self.affinity_db[(proc_p, proc_l)] = y_val
-            self.affinity_db[(raw_p, proc_l)] = y_val
-            self.affinity_db[(proc_p, raw_l)] = y_val
-
-        # 调试信息
-        print("\n=== 亲和力数据库调试信息 ===")
-        print(f"亲和力数据库总键数：{len(self.affinity_db)}")
-        db_keys = list(self.affinity_db.keys())[:5]
-        print(f"数据库前5个键示例：{db_keys}")
-
-    def _get_affinity_with_fallback(self, protein_seq, ligand_smiles):
-        """
-        最终修复版亲和力查询：
-        1. 精确匹配
-        2. 蛋白匹配+小分子模糊匹配（取最大亲和力）
-        3. 蛋白前缀匹配（取最大亲和力）
-        """
-        # 归一化查询序列
-        p_norm = protein_seq.upper()
-        l_norm = ligand_smiles.replace(' ', '').lower()
-        proc_p = self.preprocess_protein(p_norm)
-        proc_l = self.preprocess_ligand(l_norm)
-
-        # 1. 精确匹配
-        affinity = self.affinity_db.get((p_norm, l_norm),
-                    self.affinity_db.get((p_norm, proc_l),
-                    self.affinity_db.get((proc_p, l_norm),
-                    self.affinity_db.get((proc_p, proc_l), -1))))
-
-        # 2. 蛋白精确匹配 + 小分子任意匹配（取最大亲和力）
-        if affinity == -1:
-            protein_matches = []
-            for (db_p, db_l), y_val in self.affinity_db.items():
-                if db_p == p_norm or db_p == proc_p:
-                    protein_matches.append(y_val)
-
-            if protein_matches:
-                affinity = max(protein_matches)
-
-        # 3. 蛋白前缀匹配（前50字符）+ 取最大亲和力
-        if affinity == -1:
-            prefix_matches = []
-            for (db_p, db_l), y_val in self.affinity_db.items():
-                if db_p[:50] == p_norm[:50] or db_p[:50] == proc_p[:50]:
-                    prefix_matches.append(y_val)
-
-            if prefix_matches:
-                affinity = max(prefix_matches)
-
-        # 4. 最终兜底
-        return affinity if affinity != -1 else 0.0
-
     def retrieve_ligands(self, protein_seq, top_k=10):
-        """检索给定蛋白的高亲和力小分子"""
+        """检索给定蛋白的高相似度小分子（移除亲和力）"""
         # 编码查询蛋白
         query_emb = self.encode_protein_batch([protein_seq])[0].reshape(1, -1)
 
@@ -349,21 +279,16 @@ class ProteinLigandRetriever:
         for i, idx in enumerate(indices[0]):
             if 0 <= idx < len(self.ligand_id2smiles):
                 ligand_info = self.ligand_id2smiles[idx]
-                raw_l = ligand_info["raw"]
-                # 使用修复后的亲和力查询函数
-                affinity = self._get_affinity_with_fallback(protein_seq, raw_l)
-
                 results.append({
-                    "smiles": raw_l,
+                    "smiles": ligand_info["raw"],
                     "smiles_processed": ligand_info["processed"],
-                    "similarity": norm_distances[i],
-                    "affinity": affinity
+                    "similarity": norm_distances[i]
                 })
 
         return results
 
     def retrieve_proteins(self, ligand_smiles, top_k=10):
-        """检索给定小分子的高亲和力蛋白"""
+        """检索给定小分子的高相似度蛋白（移除亲和力）"""
         # 编码查询小分子
         query_emb = self.encode_ligand_batch([ligand_smiles])[0].reshape(1, -1)
 
@@ -380,20 +305,15 @@ class ProteinLigandRetriever:
         for i, idx in enumerate(indices[0]):
             if 0 <= idx < len(self.protein_id2seq):
                 protein_info = self.protein_id2seq[idx]
-                raw_p = protein_info["raw"]
-                # 使用修复后的亲和力查询函数
-                affinity = self._get_affinity_with_fallback(raw_p, ligand_smiles)
-
                 results.append({
-                    "protein_seq": raw_p,
+                    "protein_seq": protein_info["raw"],
                     "protein_processed": protein_info["processed"],
-                    "similarity": norm_distances[i],
-                    "affinity": affinity
+                    "similarity": norm_distances[i]
                 })
 
         return results
 
-# ==================== 主测试程序（最终版） ====================
+# ==================== 主测试程序（移除亲和力版） ====================
 if __name__ == "__main__":
     # 1. 配置参数
     CHECKPOINT_PATH = "C:/czx/Project/Grade0/recommender_system_project/protein-ligand-recommender/model/checkpoints/clip_tower_best-v9.ckpt"
@@ -421,13 +341,12 @@ if __name__ == "__main__":
         print(f"加载数据集失败：{e}")
         exit(1)
 
-    # 4. 选择并验证测试样本
-    print("\n=== 从数据集选择并验证测试样本 ===")
+    # 4. 选择测试样本
+    print("\n=== 从数据集选择测试样本 ===")
     test_protein = ""
     test_smiles = ""
     target_protein = ""
     target_smiles = ""
-    real_affinity = 0.0
 
     if len(retriever.raw_dataset_samples) > 0:
         # 选择第一个样本
@@ -439,32 +358,6 @@ if __name__ == "__main__":
 
         print(f"📌 测试蛋白（前60字符）：{test_protein[:60]}...")
         print(f"📌 测试SMILES：{test_smiles}")
-
-        # 验证亲和力匹配
-        print("\n=== 验证亲和力匹配 ===")
-        test_p_norm = test_protein.upper()
-        test_l_norm = test_smiles.replace(' ', '').lower()
-
-        # 1. 精确匹配
-        exact_affinity = retriever.affinity_db.get((test_p_norm, test_l_norm), -1)
-        if exact_affinity != -1:
-            real_affinity = exact_affinity
-            print(f"✅ 精确匹配成功！亲和力值：{real_affinity:.2f}")
-        else:
-            # 2. 蛋白匹配取最大亲和力
-            protein_matches = []
-            for (db_p, db_l), y_val in retriever.affinity_db.items():
-                if db_p == test_p_norm or db_p[:50] == test_p_norm[:50]:
-                    protein_matches.append(y_val)
-
-            if protein_matches:
-                real_affinity = max(protein_matches)
-                print(f"⚠️  精确匹配失败，取蛋白匹配的最大亲和力：{real_affinity:.2f}")
-            else:
-                real_affinity = 0.0
-                print(f"❌ 未找到任何匹配的亲和力值")
-
-        print(f"📌 最终使用的亲和力值：{real_affinity:.2f}")
     else:
         # 兜底用例
         test_protein = "MSHHWGYGKHNGPEHWHKDFPIAKGERQSPVDIDTHTAKYDPSLKPLSVSYDQATSLRIL"
@@ -479,7 +372,7 @@ if __name__ == "__main__":
     ligand_results = retriever.retrieve_ligands(test_protein, top_k=10)
     for i, res in enumerate(ligand_results):
         smiles_display = res['smiles'][:50] + "..." if len(res['smiles']) > 50 else res['smiles']
-        print(f"Top{i+1}：SMILES={smiles_display} | 相似度={res['similarity']:.4f} | 亲和力={res['affinity']:.2f}")
+        print(f"Top{i+1}：SMILES={smiles_display} | 相似度={res['similarity']:.4f}")
 
     # 6. 测试2：小分子→蛋白推荐
     print("\n=== 测试2：小分子→蛋白推荐 ===")
@@ -487,7 +380,7 @@ if __name__ == "__main__":
     protein_results = retriever.retrieve_proteins(test_smiles, top_k=10)
     for i, res in enumerate(protein_results):
         seq_display = res['protein_seq'][:60] + "..." if len(res['protein_seq']) > 60 else res['protein_seq']
-        print(f"Top{i+1}：蛋白序列={seq_display} | 相似度={res['similarity']:.4f} | 亲和力={res['affinity']:.2f}")
+        print(f"Top{i+1}：蛋白序列={seq_display} | 相似度={res['similarity']:.4f}")
 
     # 7. 测试3：数据集外蛋白（胰岛素）
     insulin_protein = "MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN"
@@ -498,9 +391,9 @@ if __name__ == "__main__":
     for i, res in enumerate(insulin_results):
         smiles_display = res['smiles'][:50] + "..." if len(res['smiles']) > 50 else res['smiles']
         norm_sim = res['similarity'] / max_sim if max_sim > 1e-8 else 0.0
-        print(f"Top{i+1}：SMILES={smiles_display} | 相似度={res['similarity']:.4f} | 归一化相似度={norm_sim:.4f} | 亲和力={res['affinity']:.2f}")
+        print(f"Top{i+1}：SMILES={smiles_display} | 相似度={res['similarity']:.4f} | 归一化相似度={norm_sim:.4f}")
 
-    # 8. 测试6：验证高亲和力结合对
+    # 8. 测试6：验证目标结合对检索
     print("\n=== 测试6：验证目标结合对检索 ===")
     target_smiles_norm = target_smiles.replace(' ', '').lower()
     retrieval_results = retriever.retrieve_ligands(target_protein, top_k=10)
@@ -512,13 +405,13 @@ if __name__ == "__main__":
             found = True
             print(f"✅ 在Top{i+1}找到目标小分子！")
             print(f"   SMILES：{res['smiles'][:80]}...")
-            print(f"   相似度：{res['similarity']:.4f} | 亲和力：{res['affinity']:.2f}")
+            print(f"   相似度：{res['similarity']:.4f}")
             break
 
     if not found:
         print(f"❌ 未在Top10找到目标小分子，Top10结果：")
         for i, res in enumerate(retrieval_results):
             smiles_display = res['smiles'][:50] + "..." if len(res['smiles']) > 50 else res['smiles']
-            print(f"Top{i+1}：SMILES={smiles_display} | 相似度={res['similarity']:.4f} | 亲和力={res['affinity']:.2f}")
+            print(f"Top{i+1}：SMILES={smiles_display} | 相似度={res['similarity']:.4f}")
 
     print("\n=== 所有测试完成 ===")
