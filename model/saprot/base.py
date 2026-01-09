@@ -7,7 +7,7 @@ from transformers import EsmConfig, EsmTokenizer, EsmForMaskedLM, EsmForSequence
 #     EsmForMaskedLMWithStructure as EsmForMaskedLM,
 #     EsmForSequenceClassificationWithStructure as EsmForSequenceClassification,
 # )
-from ..abstract_model import AbstractModel
+from .abstract_model import AbstractModel
 
 
 class SaprotBaseModel(AbstractModel):

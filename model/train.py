@@ -1,13 +1,10 @@
-"""
-model/train.py - 最终优化版（适配所有修改+保留15epoch）
-"""
 import os
 import logging
 import warnings
 import matplotlib.pyplot as plt
 import json
 
-# 日志屏蔽
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -15,7 +12,7 @@ for logger_name in ["urllib3", "fsspec", "filelock", "transformers", "datasets"]
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.WARNING)
 
-# 环境配置
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import torch
 torch.cuda.set_device(0)
@@ -26,7 +23,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, Callback
 from model.dual_tower import CLIPStyleDualTower
 from data.dataloader import get_dataloaders
 
-# 指标记录回调（适配准确率+Margin指标）
+
 class MetricsLoggingCallback(Callback):
     def __init__(self, save_dir='./training_logs'):
         super().__init__()
@@ -65,7 +62,7 @@ class MetricsLoggingCallback(Callback):
     def on_validation_epoch_end(self, trainer, pl_module):
         current_epoch = trainer.current_epoch + 1
 
-        # 读取指标（适配新增的准确率）
+        # 读取指标
         train_loss = self._get_metric_with_suffix(trainer.callback_metrics, 'train_loss_step')
         train_acc = self._get_metric_with_suffix(trainer.callback_metrics, 'train_acc')
         temperature = self._get_metric_with_suffix(trainer.callback_metrics, 'temperature_step')
@@ -73,11 +70,11 @@ class MetricsLoggingCallback(Callback):
         val_acc = self._get_metric_with_suffix(trainer.callback_metrics, 'val_acc')
         val_margin = self._get_metric_with_suffix(trainer.callback_metrics, 'val_margin_score')
 
-        # 获取学习率
+
         optimizer = pl_module.optimizers()
         current_lr = optimizer.param_groups[0]['lr'] if optimizer else 0.0
 
-        # 记录指标（避免重复记录）
+
         if current_epoch not in self.metrics['epoch']:
             self.metrics['epoch'].append(current_epoch)
             self.metrics['train_loss'].append(train_loss)
@@ -149,28 +146,30 @@ class MetricsLoggingCallback(Callback):
         print(f"可视化图表已保存至：{os.path.join(self.save_dir, save_filename)}")
 
 def main():
-    # 核心配置（统一参数+适配优化）
+    # 核心配置（适配SaProt）
     config = {
+        "saprot_config_path": "../models/SaProt_1.3B_AFDB_OMG_NCBI",  # 本地SaProt模型路径（关键！需替换为你的实际路径）
         "chemberta_model_name": "DeepChem/ChemBERTa-77M-MLM",
         "chemberta_hidden_dim": 384,
-        "init_temperature": 0.2,  # 0.2 适配模型初始温度
-        "hard_neg_weight": 1.1,   # 硬负样本权重
-        "num_neg_samples": 4,     # 增加负样本数量，提升数据多样性
+        "init_temperature": 0.2,
+        "hard_neg_weight": 1.1,
+        "num_neg_samples": 4,
         "pos_threshold": 5.0,
-        "lr": 8e-5,               # 学习率
-        "weight_decay": 0.03,      # 高权重衰减，防止过拟合
+        "lr": 5e-5,
+        "weight_decay": 0.03,
         "batch_size": 16,
-        "num_epochs": 20,         # 保留15个epoch
+        "num_epochs": 20,
         "num_workers": 0,
-        "margin": 0.3,            # 适配模型margin
-        "dropout": 0.2,           # Dropout率
+        "margin": 0.3,
+        "dropout": 0.2,
         "proj_dim": 256,
         "filter_min_samples": 5
     }
 
-    # 初始化模型（参数和config统一）
-    print("初始化优化后的双塔模型...")
+    # 初始化模型（添加SaProt路径配置）
+    print("初始化适配SaProt的双塔模型...")
     model = CLIPStyleDualTower(
+        saprot_config_path=config["saprot_config_path"],
         protein_embed_dim=256,
         proj_dim=config["proj_dim"],
         init_temperature=config["init_temperature"],
@@ -181,35 +180,35 @@ def main():
         dropout=config["dropout"]
     )
 
-    # 获取DataLoader（增加负样本数量）
+    # 获取DataLoader
     train_loader, val_loader = get_dataloaders(
         batch_size=config["batch_size"],
         num_workers=config["num_workers"],
         pos_threshold=config["pos_threshold"],
         margin=config["margin"],
-        num_neg_samples=config["num_neg_samples"]  # 负样本从4→8
+        num_neg_samples=config["num_neg_samples"]
     )
 
-    # 回调函数（优化监控策略）
+    # 回调函数
     metrics_callback = MetricsLoggingCallback(save_dir='./training_logs')
     checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss",      # 监控验证损失
+        monitor="val_loss",
         mode="min",
         save_top_k=1,
         dirpath="./checkpoints",
-        filename="clip_tower_best",
+        filename="saprot_clip_tower_best",
         verbose=True,
         save_weights_only=False,
         every_n_epochs=1
     )
     early_stopping_callback = EarlyStopping(
-        monitor="val_loss",      # 监控验证损失
+        monitor="val_loss",
         mode="min",
-        patience=5,              # 耐心值5，防止过早停止
+        patience=5,
         verbose=True
     )
 
-    # 训练器配置
+
     trainer = pl.Trainer(
         max_epochs=config["num_epochs"],
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
@@ -219,24 +218,25 @@ def main():
         enable_progress_bar=True,
         callbacks=[metrics_callback, checkpoint_callback, early_stopping_callback],
         enable_model_summary=True,
-        gradient_clip_val=1.0,   # 梯度裁剪，防止梯度爆炸
+        gradient_clip_val=1.0,
         num_sanity_val_steps=0,
-        fast_dev_run=False
+        fast_dev_run=False,
+        accumulate_grad_batches=2,  #
+        enable_checkpointing=True
     )
 
-    # 启动训练
+
     print("="*50)
-    print("开始训练优化后的双塔模型（保留15个epoch）")
+    print(f"开始训练SaProt双塔模型（{config['num_epochs']}个epoch）")
     print("="*50)
     trainer.fit(model, train_loader, val_loader)
 
-    # 保存指标和可视化
+
     metrics_callback.save_metrics()
     metrics_callback.plot_metrics()
 
-    print("\n训练完成！最佳模型保存至 ./checkpoints/clip_tower_best.ckpt")
+    print("\n训练完成！最佳模型保存至 ./checkpoints/best_model.ckpt")
 
 if __name__ == "__main__":
-    # Windows多进程兼容
     torch.multiprocessing.freeze_support()
     main()
