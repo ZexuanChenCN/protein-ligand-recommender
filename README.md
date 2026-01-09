@@ -1,9 +1,11 @@
 # Protein-Ligand Recommender
-基于对比学习+FAISS近邻检索的蛋白-配体推荐系统，支持配体/蛋白编码、最大内积检索，旨在快速为目标蛋白推荐潜在结合的配体分子或为小分子推荐潜在结合目标蛋白。
+A contrastive learning-based recommendation system for protein-ligand pairs, supporting bidirectional retrieval (protein → ligand / ligand → protein) with efficient Maximum Inner Product Search (MIPS).
 
-## 🌟 核心功能
-- 配体编码：基于SMILES字符串的配体分子特征提取（支持批量编码）；
-- 蛋白编码：基于SaProt模型的蛋白序列特征提取；
-- 高效检索：基于FAISS实现大规模配体库的MIPS近邻检索；
-- 推理部署：提供蛋白or配体推荐推理流程，支持FAISS索引加载/查询；
-- 可视化Web服务：可选Web界面（web目录），便捷测试推荐效果。
+- Embedding Backbones:
+  Protein embedding: Saprot (specialized for protein sequence representation)
+  Ligand embedding: Chemberta (optimized for SMILES string encoding)
+- Dataset: Built on BALM/BALM-benchmark`https://huggingface.co/datasets/BALM/BALM-benchmark`
+- Traing Framework: CLIP-style contrastive learning to align protein/ligand embeddings
+- Efficient Retrieval: MIPS-based inference for fast top-k recommendation
+- Web Interface: A web for interactive protein/ligand recommendation, just supprots the intranet of Westlake University. Web Site:`http://127.0.0.1:5000`
+  
