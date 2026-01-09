@@ -13,4 +13,5 @@ A contrastive learning-based recommendation system for protein-ligand pairs, sup
 - training: model.train.py
 - Inference: inference.mips_retrieval.py
 - Web: web.app.py
+- Training logs：model.training_logs
   
