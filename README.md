@@ -9,6 +9,7 @@ A contrastive learning-based recommendation system for protein-ligand pairs, sup
 - Efficient Retrieval: MIPS-based inference for fast top-k recommendation
 - Web Interface: A web for interactive protein/ligand recommendation, just supprots the intranet of           Westlake University. Web Site:`http://127.0.0.1:5000`
 
+
 - training: model.train.py
 - Inference: inference.mips_retrieval.py
 - Web: web.app.py
